@@ -10,8 +10,8 @@ async function readText(file) {
 }
 
 const ROLES = ['admin', 'member', 'readonly', 'pending'];
-const TABS = ['users', 'settings', 'usage', 'questions', 'sources'];
-const TAB_LABEL = { users: 'users', settings: 'settings', usage: 'usage', questions: 'questionBank', sources: 'jobSources' };
+const TABS = ['users', 'settings', 'agent', 'usage', 'questions', 'sources'];
+const TAB_LABEL = { users: 'users', settings: 'settings', agent: 'agentTab', usage: 'usage', questions: 'questionBank', sources: 'jobSources' };
 
 export async function adminView(view, tab) {
   if (!TABS.includes(tab)) tab = 'users';
@@ -20,7 +20,7 @@ export async function adminView(view, tab) {
     h('div', { class: 'space-head' }, h('h1', {}, t('nav_admin')),
       h('div', { class: 'tabs' }, TABS.map((k) => h('a', { href: `#/admin/${k}`, class: `tab ${k === tab ? 'active' : ''}` }, t(TAB_LABEL[k]))))),
     content);
-  await { users, settings, usage, questions, sources }[tab](content);
+  await { users, settings, agent, usage, questions, sources }[tab](content);
 }
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ async function users(el) {
 
 // ---------------------------------------------------------------------------
 async function settings(el) {
-  const { settings: s, ai } = await api('/admin/settings');
+  const { settings: s, ai, duckdns } = await api('/admin/settings');
   const input = (key, type = 'number') => h('input', { type, name: key, value: s[key] });
   const fields = {
     registration_open: h('input', { type: 'checkbox', checked: s.registration_open === 'true' }),
@@ -65,12 +65,20 @@ async function settings(el) {
     quota_admin: input('quota_admin'), quota_member: input('quota_member'), quota_readonly: input('quota_readonly'), quota_pending: input('quota_pending'),
     jobs_refresh_hours: input('jobs_refresh_hours'), jobs_max_age_days: input('jobs_max_age_days'),
     exam_seconds_per_question: input('exam_seconds_per_question'), exam_pass_mark: input('exam_pass_mark'),
+    duckdns_domain: h('input', { type: 'text', value: duckdns.domain, placeholder: 'monaeroprep', disabled: duckdns.fromEnv }),
+    duckdns_token: h('input', { type: 'password', placeholder: duckdns.hasToken ? '••••••••' : 'xxxxxxxx-xxxx-…', autocomplete: 'off', disabled: duckdns.fromEnv }),
   };
+  const ddStatus = h('span', { class: `chip ${duckdns.ok ? 'good' : duckdns.ok === false ? 'bad' : 'ghost'}` }, duckdns.message);
   const save = async (e) => {
     e.preventDefault();
-    const body = Object.fromEntries(Object.entries(fields).filter(([k]) => k !== 'ai_api_key' && k !== 'registration_open').map(([k, f]) => [k, f.value]));
+    const skip = ['ai_api_key', 'registration_open', 'duckdns_token', 'duckdns_domain'];
+    const body = Object.fromEntries(Object.entries(fields).filter(([k]) => !skip.includes(k)).map(([k, f]) => [k, f.value]));
     body.registration_open = String(fields.registration_open.checked);
     if (fields.ai_api_key.value) body.ai_api_key = fields.ai_api_key.value;
+    if (!duckdns.fromEnv) {
+      body.duckdns_domain = fields.duckdns_domain.value;
+      if (fields.duckdns_token.value) body.duckdns_token = fields.duckdns_token.value;
+    }
     try { await api('/admin/settings', { method: 'PUT', body }); toast(t('saved'), 'success'); settings(el); } catch (err) { toast(errorText(err), 'error'); }
   };
   clear(el, h('form', { class: 'stack', onsubmit: save },
@@ -87,7 +95,76 @@ async function settings(el) {
       h('div', { class: 'grid two tight' },
         h('label', {}, t('jobsRefreshHours'), fields.jobs_refresh_hours), h('label', {}, t('jobsMaxAge'), fields.jobs_max_age_days),
         h('label', {}, t('examSeconds'), fields.exam_seconds_per_question), h('label', {}, `${t('passMark')} (%)`, fields.exam_pass_mark))),
+    h('div', { class: 'card stack' }, h('h3', {}, `🌍 ${t('webAccess')}`),
+      h('p', { class: 'muted small' }, t('webAccessIntro')),
+      h('div', { class: 'grid two tight' },
+        h('label', {}, t('duckdnsDomain'), h('div', { class: 'row gap nowrap' }, fields.duckdns_domain, h('span', { class: 'muted' }, '.duckdns.org'))),
+        h('label', {}, t('duckdnsToken'), fields.duckdns_token)),
+      h('div', { class: 'row gap' }, h('span', { class: 'small' }, `${t('status')} :`), ddStatus,
+        h('button', {
+          type: 'button', class: 'btn small',
+          onclick: async () => { const r = await api('/admin/duckdns/update', { method: 'POST' }); ddStatus.textContent = r.message; ddStatus.className = `chip ${r.ok ? 'good' : r.ok === false ? 'bad' : 'ghost'}`; },
+        }, t('testNow'))),
+      h('ol', { class: 'howto' }, [1, 2, 3, 4, 5].map((i) => h('li', {}, t(`webStep${i}`))))),
     h('button', { class: 'btn primary' }, t('save'))));
+}
+
+// ---------------------------------------------------------------------------
+async function agent(el) {
+  const [{ settings: s }, status, a, b] = await Promise.all([api('/admin/settings'), api('/admin/agent'), api('/quiz/atpl/subjects'), api('/quiz/a320/subjects')]);
+  const check = (k) => h('input', { type: 'checkbox', checked: s[k] === 'true' });
+  const num = (k) => h('input', { type: 'number', min: 1, value: s[k], class: 'narrow' });
+  const f = {
+    agent_jobs_enabled: check('agent_jobs_enabled'), agent_jobs_hours: num('agent_jobs_hours'), agent_jobs_max_searches: num('agent_jobs_max_searches'),
+    agent_jobs_focus: h('textarea', { rows: 3 }, s.agent_jobs_focus),
+    agent_insights_enabled: check('agent_insights_enabled'), agent_insights_days: num('agent_insights_days'), agent_insights_per_run: num('agent_insights_per_run'),
+    agent_questions_enabled: check('agent_questions_enabled'), agent_questions_per_week: num('agent_questions_per_week'),
+  };
+  const save = async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(Object.entries(f).map(([k, el2]) => [k, el2.type === 'checkbox' ? String(el2.checked) : el2.value]));
+    try { await api('/admin/settings', { method: 'PUT', body }); toast(t('saved'), 'success'); } catch (err) { toast(errorText(err), 'error'); }
+  };
+  const run = (path, body) => async () => {
+    try { await api(path, { method: 'POST', body }); toast(t('researchStarted'), 'success'); setTimeout(() => agent(el), 1500); }
+    catch (err) { toast(errorText(err), 'error'); }
+  };
+  const subjects = [...a.subjects.map((x) => ({ ...x, space: 'ATPL' })), ...b.subjects.map((x) => ({ ...x, space: 'A320' }))];
+  const qSubject = h('select', {}, subjects.map((x) => h('option', { value: x.code }, `${x.space} · ${x.code} · ${subjectName(x)} (${x.total})`)));
+  const qCount = h('input', { type: 'number', min: 1, max: 20, value: 10, class: 'narrow' });
+  const qTopic = h('input', { placeholder: t('topicOptional') });
+  // Estimate with the default model's prices (Opus 5.5: $4 / $20 per M tokens) + $10 per 1 000 web searches.
+  const costOf = (r) => (((r.input_tokens || 0) * 4 + (r.output_tokens || 0) * 20) / 1e6 + (r.web_searches || 0) * 0.01).toFixed(2);
+  const running = status.runs.some((r) => r.status === 'running');
+
+  clear(el,
+    status.configured ? null : h('p', { class: 'notice' }, t('aiNotConfigured')),
+    h('p', { class: 'muted' }, t('agentIntro')),
+    h('form', { class: 'stack', onsubmit: save },
+      h('div', { class: 'card stack' }, h('h3', {}, `💼 ${t('agentJobs')}`),
+        h('label', { class: 'inline' }, f.agent_jobs_enabled, t('agentJobsEnable')),
+        h('div', { class: 'row gap' }, h('label', { class: 'inline' }, t('everyHours'), f.agent_jobs_hours), h('label', { class: 'inline' }, t('maxSearches'), f.agent_jobs_max_searches)),
+        h('label', {}, t('agentFocus'), f.agent_jobs_focus),
+        h('div', {}, h('button', { type: 'button', class: 'btn small', onclick: run('/admin/agent/jobs') }, `▶ ${t('runNow')}`))),
+      h('div', { class: 'card stack' }, h('h3', {}, `ⓘ ${t('agentInsights')}`),
+        h('label', { class: 'inline' }, f.agent_insights_enabled, t('agentInsightsEnable')),
+        h('div', { class: 'row gap' }, h('label', { class: 'inline' }, t('olderThanDays'), f.agent_insights_days), h('label', { class: 'inline' }, t('cardsPerRun'), f.agent_insights_per_run)),
+        h('div', {}, h('button', { type: 'button', class: 'btn small', onclick: run('/admin/agent/insights') }, `▶ ${t('runNow')}`))),
+      h('div', { class: 'card stack' }, h('h3', {}, `❓ ${t('agentQuestions')}`),
+        h('label', { class: 'inline' }, f.agent_questions_enabled, t('agentQuestionsEnable')),
+        h('label', { class: 'inline' }, t('perWeek'), f.agent_questions_per_week),
+        h('p', { class: 'muted small' }, t('agentQuestionsHelp')),
+        h('div', { class: 'filter-row' }, qSubject, h('label', { class: 'inline' }, t('count'), qCount), qTopic,
+          h('button', { type: 'button', class: 'btn small', onclick: () => run('/admin/agent/questions', { subject: qSubject.value, count: Number(qCount.value), topic: qTopic.value })() }, `✨ ${t('generate')}`))),
+      h('button', { class: 'btn primary' }, t('save'))),
+    h('div', { class: 'card table-wrap' }, h('h3', {}, `${t('agentRuns')} ${running ? '⏳' : ''}`),
+      status.runs.length ? h('table', { class: 'table small' }, h('tbody', {}, status.runs.map((r) => h('tr', {},
+        h('td', {}, fmtDate(r.started_at)), h('td', {}, t(`task_${r.task}`)),
+        h('td', {}, h('span', { class: `chip ${r.status === 'ok' ? 'good' : r.status === 'error' ? 'bad' : 'warn'}` }, t(`run_${r.status}`))),
+        h('td', { class: 'ellipsis wide' }, r.detail)))))
+        : h('p', { class: 'muted' }, t('none')),
+      status.last30.length ? h('p', { class: 'muted small' }, `${t('last30d')} : ${status.last30.map((r) => `${t(`task_${r.kind.replace('agent-', '')}`)} ${r.runs}× · ${r.web_searches} ${t('searches')} · ~$${costOf(r)}`).join(' — ')}`) : null));
+  if (running) setTimeout(() => { if (el.isConnected && location.hash.startsWith('#/admin/agent')) agent(el); }, 8000);
 }
 
 // ---------------------------------------------------------------------------

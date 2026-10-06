@@ -31,4 +31,14 @@ CLE API (assistant IA sur les documents A320)
 SAUVEGARDE
 - Tout est dans le dossier "data" (base + PDF) : copie-le regulierement.
 
-Ouvrir AeroPrep a tes amis depuis Internet (DuckDNS, HTTPS) : voir README.md.
+ACCES DEPUIS INTERNET (pour tes amis)
+1. Cree un compte gratuit sur https://www.duckdns.org, ajoute un sous-domaine, copie le token.
+2. Double-clique sur ACTIVER-ACCES-INTERNET.bat et reponds aux questions.
+3. Dans l'interface de ta box : redirige le port 443 (TCP) vers l'adresse IP du PC
+   (le script l'affiche) et reserve cette adresse dans le DHCP.
+4. Relance AeroPrep : https://tonnom.duckdns.org fonctionne depuis n'importe ou.
+   Le PC doit rester allume.
+
+AGENT IA (offres, fiches salaires, nouvelles questions)
+- Admin > Agent IA : coche ce que tu veux automatiser (desactive par defaut : ca consomme
+  des credits API). "Lancer maintenant" pour un premier essai.

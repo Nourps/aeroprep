@@ -224,6 +224,38 @@ CREATE TABLE IF NOT EXISTS job_marks (
 );
 `);
 
+db.exec(`
+-- Context cards shown in the jobs tab (airlines, salaries, recruitment...), seeded then refreshed by the AI agent
+CREATE TABLE IF NOT EXISTS insights (
+  key TEXT PRIMARY KEY,
+  kind TEXT NOT NULL DEFAULT 'airline',     -- airline | topic
+  title TEXT NOT NULL,
+  region TEXT NOT NULL DEFAULT '',
+  match TEXT NOT NULL DEFAULT '',           -- comma separated company names used to link job offers
+  summary TEXT NOT NULL DEFAULT '',
+  body TEXT NOT NULL DEFAULT '',            -- markdown
+  salary_fo TEXT NOT NULL DEFAULT '',
+  salary_cpt TEXT NOT NULL DEFAULT '',
+  sources TEXT NOT NULL DEFAULT '[]',       -- JSON [{title,url}]
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_by TEXT NOT NULL DEFAULT 'seed',  -- seed | ai | admin
+  locked INTEGER NOT NULL DEFAULT 0         -- 1 = edited by an admin, the agent leaves it alone
+);
+
+CREATE TABLE IF NOT EXISTS agent_runs (
+  id INTEGER PRIMARY KEY,
+  task TEXT NOT NULL,                       -- jobs | insights | questions
+  started_at TEXT NOT NULL DEFAULT (datetime('now')),
+  finished_at TEXT,
+  status TEXT NOT NULL DEFAULT 'running',   -- running | ok | error
+  detail TEXT NOT NULL DEFAULT ''
+);
+`);
+
+// ---------- light migrations for databases created by older versions ----------
+const hasColumn = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+if (!hasColumn('ai_usage', 'web_searches')) db.exec('ALTER TABLE ai_usage ADD COLUMN web_searches INTEGER NOT NULL DEFAULT 0');
+
 // ---------- settings ----------
 const DEFAULT_SETTINGS = {
   registration_open: 'true',
@@ -237,6 +269,18 @@ const DEFAULT_SETTINGS = {
   jobs_refresh_hours: '6',
   jobs_max_age_days: '45',
   exam_seconds_per_question: '75',
+  // AI agent (web search). Off by default: it spends API credit.
+  agent_jobs_enabled: 'false',
+  agent_jobs_hours: '24',
+  agent_jobs_max_searches: '12',
+  agent_jobs_focus: 'Europe (France en priorité), Moyen-Orient ; A320 family, B737, gros porteurs ; cadets, pilotes qualifiés sans QT (low hours), FO qualifiés sur type, commandants',
+  agent_insights_enabled: 'false',
+  agent_insights_days: '30',
+  agent_insights_per_run: '3',
+  agent_questions_enabled: 'false',
+  agent_questions_per_week: '10',
+  duckdns_domain: '',
+  duckdns_token: '',
   exam_pass_mark: '75',
 };
 const insertSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
@@ -325,3 +369,28 @@ export function loadSeedQuestions() {
 }
 
 export const now = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+/** Loads seed/insights/*.json context cards; a card already updated by the AI or an admin is kept. */
+export function loadSeedInsights() {
+  const dir = path.join(ROOT, 'seed', 'insights');
+  if (!fs.existsSync(dir)) return 0;
+  const upsert = db.prepare(`INSERT INTO insights (key, kind, title, region, match, summary, body, salary_fo, salary_cpt, sources, updated_at, updated_by)
+    VALUES (@key, @kind, @title, @region, @match, @summary, @body, @salary_fo, @salary_cpt, @sources, @updated_at, 'seed')
+    ON CONFLICT(key) DO UPDATE SET kind = excluded.kind, title = excluded.title, region = excluded.region, match = excluded.match,
+      summary = excluded.summary, body = excluded.body, salary_fo = excluded.salary_fo, salary_cpt = excluded.salary_cpt,
+      sources = excluded.sources, updated_at = excluded.updated_at
+    WHERE insights.updated_by = 'seed' AND insights.updated_at < excluded.updated_at`);
+  let n = 0;
+  db.transaction(() => {
+    for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
+      for (const c of JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'))) {
+        n += upsert.run({
+          key: c.key, kind: c.kind || 'airline', title: c.title, region: c.region || '', match: (c.match || []).join(','),
+          summary: c.summary || '', body: c.body || '', salary_fo: c.salary_fo || '', salary_cpt: c.salary_cpt || '',
+          sources: JSON.stringify(c.sources || []), updated_at: c.updated_at || '2026-10-06 00:00:00',
+        }).changes;
+      }
+    }
+  })();
+  return n;
+}

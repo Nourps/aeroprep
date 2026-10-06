@@ -40,7 +40,7 @@ r.post('/register', rateLimit({ windowMs: 3600_000, max: 10 }), (req, res) => {
   const role = userCount === 0 || config.adminEmails.includes(email) ? 'admin' : 'pending';
   const info = db.prepare('INSERT INTO users (email, name, password_hash, role, lang) VALUES (?, ?, ?, ?, ?)')
     .run(email, name, hashPassword(password), role, lang);
-  createSession(res, info.lastInsertRowid);
+  createSession(res, info.lastInsertRowid, req);
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid);
   res.json({ user: publicUser(user) });
 });
@@ -53,7 +53,7 @@ r.post('/login', rateLimit({ windowMs: 15 * 60_000, max: 20 }), (req, res) => {
   }
   if (user.disabled) return res.status(403).json({ error: 'account_disabled' });
   db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(user.id);
-  createSession(res, user.id);
+  createSession(res, user.id, req);
   res.json({ user: publicUser(user) });
 });
 

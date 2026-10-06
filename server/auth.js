@@ -26,7 +26,7 @@ export function validatePassword(pw) {
 // ---------- sessions ----------
 const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
-export function createSession(res, userId) {
+export function createSession(res, userId, req) {
   const token = crypto.randomBytes(32).toString('base64url');
   const expires = new Date(Date.now() + config.sessionDays * 86400_000);
   db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
@@ -34,7 +34,8 @@ export function createSession(res, userId) {
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: config.secureCookies,
+    // Secure when served over HTTPS (directly or through Caddy/nginx), so http://localhost keeps working.
+    secure: config.secureCookies || !!req?.secure,
     expires,
     path: '/',
   });

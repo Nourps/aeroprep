@@ -75,7 +75,7 @@ export async function render() {
         else await quizHub(view, 'a320', sub === 'systems' ? 'subjects' : sub, a320Tabs(sub));
         break;
       }
-      case 'jobs': await jobsView(view); break;
+      case 'jobs': await jobsView(view, parts[1] === 'infos' ? 'infos' : 'offers'); break;
       case 'admin': await adminView(view, parts[1] || 'users'); break;
       case 'profile': await profileView(view); break;
       default: clear(view, h('p', {}, '404'));

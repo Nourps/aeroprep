@@ -21,6 +21,17 @@ La banque de départ contient **≈ 210 questions originales** (≈ 150 ATPL, �
 - **Documents** : bibliothèque de PDF classés (FCOM, FCTM, QRH, MEL, bulletins, SOP, notes de QT), consultables dans le navigateur, recherche plein texte avec extraits. Réservée aux comptes validés.
 - **Assistant IA** : pose une question en français ou en anglais ; l'IA cherche elle-même dans les PDF indexés (outils de recherche et de lecture de page), répond en citant les pages, et chaque citation est un lien qui ouvre le PDF à la bonne page.
 
+### Agent IA (recherche web automatique)
+*Admin › Agent IA*. Claude utilise la recherche web depuis ton serveur, selon un planning, pour trois tâches (désactivées par défaut car elles consomment des crédits API : tokens + 0,01 $ par recherche web) :
+- **Offres d'emploi** (par défaut toutes les 24 h, 12 recherches max.) : il cherche les offres récentes sur PilotsGlobal, Pilot Jobs Network, AviationJobSearch, Pilot Career Centre, AviationCV, les agences (Rishworth, Brookfield, CAE Parc…), les sites carrières des compagnies et les annonces publiques LinkedIn. Il classe chaque offre et ne garde que des liens vus dans les résultats de recherche. Les offres trouvées portent la source « IA · site ».
+- **Fiches « Infos & salaires »** : met à jour chaque jour les fiches les plus anciennes (salaires FO/CDB, recrutement, QT, contrats, actualité sociale), avec leurs sources. *Créer la fiche* sur n'importe quelle compagnie lance une recherche complète. Une fiche verrouillée par l'admin n'est plus modifiée.
+- **Questions** : écrit chaque semaine de nouvelles questions originales à partir de sources vérifiées (EASA, OACI, SKYbrary, manuels), en priorité dans les matières qui en ont le moins. Elles arrivent désactivées, à relire. On peut aussi lancer une génération ciblée (matière, thème, nombre).
+
+Pourquoi un agent plutôt qu'un « aspirateur » de sites : la plupart des sites d'offres interdisent la collecte automatique et changent régulièrement leur présentation. L'agent passe par la recherche web, comme un humain, et reste robuste aux changements.
+
+### Infos & salaires
+Onglet *Offres d'emploi › Infos & salaires* : 7 guides (marché 2026, programmes cadets, QT et bonds, contrats, sélection, Moyen-Orient, repères de salaires) et 15 fiches compagnies (Air France, Transavia, easyJet, Ryanair, Wizz Air, Vueling, Volotea, French bee, groupe Lufthansa, Emirates, Qatar, Etihad, flydubai, Riyadh Air, Saudia). Sur chaque offre d'une compagnie qui a une fiche, le bouton **ⓘ Salaires & infos** l'ouvre directement. Chiffres indicatifs, sourcés et datés.
+
 ### Offres d'emploi
 - Agrégation automatique depuis des **sources configurées par l'admin** : flux RSS/Atom, API publiques **Greenhouse** et **Lever**, pages carrières balisées `JobPosting` (schema.org, faites pour les moteurs de recherche ; `robots.txt` respecté).
 - **« Ajouter une offre »** pour tout le reste (LinkedIn, sites qui interdisent la collecte automatique) : on colle le lien, l'outil lit la page quand c'est autorisé, sinon on remplit le formulaire. LinkedIn n'est jamais lu automatiquement.
@@ -48,6 +59,14 @@ La banque de départ contient **≈ 210 questions originales** (≈ 150 ATPL, �
 3. Ensuite, pour lancer AeroPrep : raccourci du bureau ou **`LANCER-AEROPREP.bat`** (garder la fenêtre ouverte). Adresse : http://localhost:3000.
 
 Le détail (message SmartScreen, pare-feu, réseau local) est dans `COMMENT-INSTALLER.txt`.
+
+### Windows : accès depuis Internet (DuckDNS)
+1. Crée un compte gratuit sur [duckdns.org](https://www.duckdns.org), ajoute un sous-domaine (ex. `monaeroprep`) et copie ton token.
+2. Double-clique sur **`ACTIVER-ACCES-INTERNET.bat`** : il demande le sous-domaine et le token, télécharge **Caddy** (serveur HTTPS officiel, avec le module DuckDNS), écrit sa configuration et ouvre le port 443 dans le pare-feu.
+3. Dans ta box : redirige le **port 443 (TCP)** vers l'adresse IP locale du PC (affichée par le script) et réserve cette adresse dans le DHCP.
+4. Relance AeroPrep (raccourci du bureau) : le site est disponible sur `https://monaeroprep.duckdns.org`. Le certificat HTTPS est obtenu automatiquement (défi DNS DuckDNS : le port 80 n'a pas besoin d'être ouvert).
+
+Le serveur met à jour l'adresse IP DuckDNS toutes les 5 minutes (statut visible dans *Admin › Réglages*). Le PC doit rester allumé. Une fois le site ouvert sur Internet, ferme les inscriptions ou valide les comptes un par un.
 
 ### Serveur (Linux / Docker) avec accès depuis Internet
 Prérequis : **Node.js 22.13+** (ou Docker), une machine qui reste allumée, un nom DuckDNS pointant vers ta box, et les ports 80/443 redirigés vers la machine.
@@ -122,6 +141,11 @@ npm test         # tests API + classement des offres
 npm run check    # vérifie les fichiers seed/*.json
 ```
 Structure : `server/` (Express 5, SQLite intégré à Node.js (`node:sqlite`, aucun module à compiler), FTS5 pour la recherche, pdf.js pour l'extraction de texte, SDK Anthropic), `public/` (interface en JavaScript natif, sans build), `seed/` (banques de questions).
+
+## Banques de questions trouvées sur Internet
+- La banque officielle EASA (ECQB, environ 10 000–12 000 questions) **n'est pas publique** ; les banques commerciales (Aviationexam, PASS, Bristol, ATPLQuestions…) sont protégées et ne peuvent pas être copiées.
+- La FAA publie des exemples de questions (domaine public américain), mais centrés sur la réglementation et les procédures américaines.
+- AeroPrep enrichit donc sa banque avec des **questions originales écrites à partir de sources vérifiées**, par l'agent IA (automatiquement ou à la demande), plus tes propres questions (une par une ou via Excel).
 
 ## Points d'attention
 - **Documents** : FCOM/QRH appartiennent à Airbus ou à la compagnie et sont souvent confidentiels. La bibliothèque n'est accessible qu'aux comptes validés ; ne valide que des personnes de confiance. La documentation approuvée et à jour de la compagnie fait toujours foi.

@@ -1,6 +1,7 @@
 import { t } from '../i18n.js';
 import { h, clear, api, toast, errorText, modal, fmtDate } from '../ui.js';
 import { state, can } from '../app.js';
+import { insightsView, loadInsights, insightForCompany, openInsight } from './insights.js';
 
 const DEFAULTS = { q: '', category: [], typeRating: [], aircraft: [], myHours: '', includeUnknownHours: true, days: '', status: '', sort: 'recent' };
 function loadFilters() {
@@ -18,8 +19,16 @@ function chipGroup(label, values, selected, prefix, onChange) {
     }, t(`${prefix}${v}`)))));
 }
 
-export async function jobsView(view) {
-  const meta = await api('/jobs/meta');
+export async function jobsView(view, tab = 'offers') {
+  const tabsBar = h('div', { class: 'tabs' },
+    h('a', { href: '#/jobs', class: `tab ${tab === 'offers' ? 'active' : ''}` }, t('offersTab')),
+    h('a', { href: '#/jobs/infos', class: `tab ${tab === 'infos' ? 'active' : ''}` }, t('insightsTab')));
+  if (tab === 'infos') {
+    const box = h('div');
+    clear(view, h('div', { class: 'space-head' }, h('div', {}, h('h1', {}, t('insightsTab'))), tabsBar), box);
+    return insightsView(box);
+  }
+  const [meta, cards] = await Promise.all([api('/jobs/meta'), loadInsights()]);
   const f = loadFilters();
   const list = h('div', { class: 'job-list' });
   const countEl = h('span', { class: 'muted' });
@@ -38,7 +47,7 @@ export async function jobsView(view) {
     if (f.sort === 'hours') p.set('sort', 'hours');
     const { jobs } = await api(`/jobs?${p}`);
     countEl.textContent = `${jobs.length} · ${t('nav_jobs')}`;
-    clear(list, jobs.length ? jobs.map((j) => jobCard(j, load)) : h('p', { class: 'muted card' }, t('noJobs')));
+    clear(list, jobs.length ? jobs.map((j) => jobCard(j, load, cards)) : h('p', { class: 'muted card' }, t('noJobs')));
   };
   const reloadSoon = () => { clearTimeout(timer); timer = setTimeout(load, 250); };
   const rerender = () => { renderFilters(); load(); };
@@ -69,8 +78,9 @@ export async function jobsView(view) {
   renderFilters();
 
   clear(view,
+    h('div', { class: 'space-head' }, h('h1', {}, t('nav_jobs')), tabsBar),
     h('div', { class: 'page-head row between' },
-      h('div', {}, h('h1', {}, t('nav_jobs')), h('p', { class: 'muted' }, t('jobsIntro')),
+      h('div', {}, h('p', { class: 'muted' }, t('jobsIntro')),
         h('p', { class: 'muted small' }, `${t('lastRefresh')} : ${meta.lastRefresh ? fmtDate(meta.lastRefresh) : '—'} · ${meta.sources.map((s) => `${s.name} (${s.n})`).join(' · ')}`)),
       can('jobs.add') ? h('button', { class: 'btn primary', onclick: () => addJobModal(load) }, `+ ${t('addJob')}`) : null),
     filtersBox,
@@ -79,7 +89,8 @@ export async function jobsView(view) {
   await load();
 }
 
-function jobCard(j, reload) {
+function jobCard(j, reload, cards = []) {
+  const card = insightForCompany(cards, j.company);
   const mark = async (status) => { await api(`/jobs/${j.id}/mark`, { method: 'POST', body: { status: j.status === status ? null : status } }); reload(); };
   const aircraft = j.aircraft ? j.aircraft.split(',') : [];
   const canEdit = can('jobs.add');
@@ -97,6 +108,7 @@ function jobCard(j, reload) {
       h('div', { class: 'muted small' }, `${t('source')} : ${j.source_name} · ${fmtDate(j.posted_at || j.first_seen_at)}`)),
     h('div', { class: 'job-actions' },
       h('a', { class: 'btn small primary', href: j.url, target: '_blank', rel: 'noopener noreferrer' }, t('viewOffer')),
+      card ? h('button', { class: 'btn small info', onclick: () => openInsight(card) }, `ⓘ ${t('payAndInfo')}`) : null,
       h('button', { class: `btn small ${j.status === 'saved' ? 'on' : ''}`, onclick: () => mark('saved') }, `★ ${t('save_')}`),
       h('button', { class: `btn small ${j.status === 'applied' ? 'on' : ''}`, onclick: () => mark('applied') }, `✓ ${t('applied_')}`),
       h('button', { class: `btn small ${j.status === 'rejected' ? 'on' : ''}`, onclick: () => mark('rejected') }, `⊘ ${t('hide_')}`),

@@ -364,3 +364,19 @@ details[open] > summary { margin-bottom: .75rem; }
 .correct-pick .letter { width: 1.6rem; height: 1.6rem; border-radius: 6px; display: grid; place-items: center; background: var(--surface-2); font-weight: 700; color: var(--text); }
 .correct-pick:has(input:checked) .letter { background: var(--good); color: var(--surface); }
 .howto { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: .35rem; color: var(--text-2); }
+
+/* ---------- insights ---------- */
+.grid.insights { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.insight-card { text-align: left; font: inherit; color: var(--text); cursor: pointer; display: flex; flex-direction: column; gap: .35rem; }
+.insight-card:hover { border-color: var(--accent); }
+.insight-card.topic { border-left: 4px solid var(--accent); }
+.insight-card h3 { margin: 0; }
+.tiny { font-size: .75rem; }
+.lead { font-size: 1.02rem; font-weight: 500; }
+.salary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .6rem; margin: .5rem 0 1rem; }
+.salary-grid > div { background: var(--surface-2); border-radius: 10px; padding: .6rem .8rem; display: flex; flex-direction: column; gap: .15rem; }
+.sources-list ul { margin: .3rem 0 .8rem; padding-left: 1.2rem; font-size: .88rem; }
+.btn.info { border-color: var(--accent); color: var(--accent); }
+.nowrap { flex-wrap: nowrap; }
+.table td.ellipsis.wide { max-width: 520px; }
+.view form.stack > .btn.primary:last-child { align-self: flex-start; min-width: 10rem; }

@@ -17,11 +17,18 @@ echo   Pour arreter AeroPrep : ferme cette fenetre.
 echo ============================================
 echo.
 
+rem Acces Internet (si ACTIVER-ACCES-INTERNET.bat a ete lance) : Caddy sert le site en HTTPS
+if exist "tools\caddy.exe" if exist "tools\Caddyfile" (
+  echo Acces Internet actif : Caddy demarre dans une fenetre reduite.
+  start "AeroPrep HTTPS (Caddy)" /min "tools\caddy.exe" run --config "tools\Caddyfile" --adapter caddyfile
+)
+
 rem Ouvre le navigateur quand le serveur est pret
 start "" powershell -NoProfile -WindowStyle Hidden -Command "Start-Sleep -Seconds 3; Start-Process 'http://localhost:3000'"
 
 node --disable-warning=ExperimentalWarning server\index.js
 
+if exist "tools\caddy.exe" taskkill /im caddy.exe /f >nul 2>nul
 echo.
 echo AeroPrep s'est arrete (voir le message ci-dessus).
 pause

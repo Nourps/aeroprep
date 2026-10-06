@@ -19,7 +19,7 @@ function client() {
 }
 
 /** Sends a request, adding the refusal fallback when the selected model supports it. */
-async function send(params) {
+export async function send(params) {
   const model = getSetting('ai_model');
   const body = {
     model,
@@ -33,15 +33,16 @@ async function send(params) {
   return client().messages.create(body);
 }
 
-function addUsage(total, usage) {
+export function addUsage(total, usage) {
   if (!usage) return;
   total.input += (usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
   total.output += usage.output_tokens || 0;
+  total.searches = (total.searches || 0) + (usage.server_tool_use?.web_search_requests || 0);
 }
 
-function logUsage(userId, kind, model, usage, question) {
-  db.prepare('INSERT INTO ai_usage (user_id, kind, model, input_tokens, output_tokens, question) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(userId, kind, model, usage.input, usage.output, String(question).slice(0, 500));
+export function logUsage(userId, kind, model, usage, question) {
+  db.prepare('INSERT INTO ai_usage (user_id, kind, model, input_tokens, output_tokens, web_searches, question) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(userId, kind, model, usage.input, usage.output, usage.searches || 0, String(question).slice(0, 500));
 }
 
 // ---------------------------------------------------------------------------

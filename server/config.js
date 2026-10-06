@@ -30,6 +30,8 @@ export const config = {
   trustProxy: process.env.TRUST_PROXY || 'loopback',
   // An API key from the environment takes precedence over the one stored from the admin panel.
   anthropicApiKey: process.env.ANTHROPIC_API_KEY || '',
+  duckdnsDomain: process.env.DUCKDNS_DOMAIN || process.env.DOMAIN || '',
+  duckdnsToken: process.env.DUCKDNS_TOKEN || '',
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 300),
   sessionDays: Number(process.env.SESSION_DAYS || 30),
 };

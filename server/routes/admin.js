@@ -2,7 +2,9 @@ import { Router } from 'express';
 import crypto from 'node:crypto';
 import { db, getSetting, setSetting } from '../db.js';
 import { requirePerm, hashPassword, dailyQuota } from '../auth.js';
-import { aiStatus } from '../services/ai.js';
+import { aiStatus, apiKey } from '../services/ai.js';
+import { agentStatus, runJobSearch, refreshOldestInsights, generateWebQuestions } from '../services/agent.js';
+import { duckdnsConfig, duckdnsState, updateDuckdns } from '../services/duckdns.js';
 import { refreshAll, runSource } from '../services/jobs.js';
 import { validQuestion, questionValues, insertQuestion, importQuestions, parseQuestionsCsv } from '../questions.js';
 
@@ -16,9 +18,9 @@ const PRICES = {
   'claude-opus-5-5': [4, 20], 'claude-opus-5': [5, 25], 'claude-sonnet-5-5': [2, 10], 'claude-sonnet-5': [2, 10],
   'claude-haiku-4-5': [1, 5], 'claude-fable-5-1': [10, 50],
 };
-const cost = (model, input, output) => {
+const cost = (model, input, output, searches = 0) => {
   const [i, o] = PRICES[model] || [0, 0];
-  return (input * i + output * o) / 1e6;
+  return (input * i + output * o) / 1e6 + searches * 0.01; // web search: $10 per 1 000 searches
 };
 
 // ---------- users ----------
@@ -67,12 +69,19 @@ r.delete('/users/:id', (req, res) => {
 
 // ---------- settings & AI ----------
 const EDITABLE = ['registration_open', 'ai_model', 'ai_effort', 'quota_admin', 'quota_member', 'quota_readonly', 'quota_pending',
-  'jobs_refresh_hours', 'jobs_max_age_days', 'exam_seconds_per_question', 'exam_pass_mark'];
+  'jobs_refresh_hours', 'jobs_max_age_days', 'exam_seconds_per_question', 'exam_pass_mark',
+  'agent_jobs_enabled', 'agent_jobs_hours', 'agent_jobs_max_searches', 'agent_jobs_focus',
+  'agent_insights_enabled', 'agent_insights_days', 'agent_insights_per_run', 'agent_questions_enabled', 'agent_questions_per_week',
+  'duckdns_domain'];
 
 r.get('/settings', (_req, res) => {
   const settings = Object.fromEntries(EDITABLE.map((k) => [k, getSetting(k)]));
   const key = getSetting('ai_api_key');
-  res.json({ settings, ai: { ...aiStatus(), storedKeyHint: key ? `…${key.slice(-4)}` : null } });
+  const dd = duckdnsConfig();
+  res.json({
+    settings, ai: { ...aiStatus(), storedKeyHint: key ? `…${key.slice(-4)}` : null },
+    duckdns: { domain: dd.domain, hasToken: !!dd.token, fromEnv: dd.fromEnv, ...duckdnsState },
+  });
 });
 
 r.put('/settings', (req, res) => {
@@ -80,12 +89,15 @@ r.put('/settings', (req, res) => {
     if (req.body[k] === undefined) continue;
     let v = String(req.body[k]).trim();
     if (k === 'ai_effort' && !['low', 'medium', 'high', 'xhigh', 'max'].includes(v)) continue;
-    if (k === 'registration_open') v = v === 'true' ? 'true' : 'false';
-    if (k.startsWith('quota_') || k.startsWith('jobs_') || k.startsWith('exam_')) { if (!Number.isFinite(Number(v))) continue; }
+    if (k === 'registration_open' || k.endsWith('_enabled')) v = v === 'true' ? 'true' : 'false';
+    if (/^(quota_|jobs_|exam_)/.test(k) || /_(hours|searches|days|per_run|per_week)$/.test(k)) { if (!Number.isFinite(Number(v))) continue; }
+    if (k === 'duckdns_domain') v = v.toLowerCase().replace(/^https?:\/\//, '').replace(/\.duckdns\.org.*$/, '').replace(/[^a-z0-9-]/g, '');
     if (k === 'ai_model' && !/^[a-z0-9.\-]+$/.test(v)) continue;
     setSetting(k, v);
   }
   if (typeof req.body.ai_api_key === 'string') setSetting('ai_api_key', req.body.ai_api_key.trim());
+  if (typeof req.body.duckdns_token === 'string') setSetting('duckdns_token', req.body.duckdns_token.trim());
+  if (req.body.duckdns_domain !== undefined || req.body.duckdns_token !== undefined) updateDuckdns();
   res.json({ ok: true });
 });
 
@@ -94,7 +106,7 @@ r.get('/usage', (_req, res) => {
       SUM(CASE WHEN a.created_at >= date('now') AND a.kind = 'ask' THEN 1 ELSE 0 END) AS today,
       SUM(CASE WHEN a.kind = 'ask' THEN 1 ELSE 0 END) AS questions,
       SUM(CASE WHEN a.kind = 'generate' THEN 1 ELSE 0 END) AS generations,
-      SUM(a.input_tokens) AS input_tokens, SUM(a.output_tokens) AS output_tokens
+      SUM(a.input_tokens) AS input_tokens, SUM(a.output_tokens) AS output_tokens, SUM(a.web_searches) AS web_searches
     FROM ai_usage a LEFT JOIN users u ON u.id = a.user_id
     WHERE a.created_at >= date('now', '-30 days')
     GROUP BY a.user_id, a.model ORDER BY input_tokens DESC`).all();
@@ -103,10 +115,10 @@ r.get('/usage', (_req, res) => {
     const e = byUser.get(r0.id) || { id: r0.id, email: r0.email, name: r0.name, role: r0.role, today: 0, questions: 0, generations: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0 };
     e.today += r0.today; e.questions += r0.questions; e.generations += r0.generations;
     e.input_tokens += r0.input_tokens; e.output_tokens += r0.output_tokens;
-    e.cost_usd += cost(r0.model, r0.input_tokens, r0.output_tokens);
+    e.cost_usd += cost(r0.model, r0.input_tokens, r0.output_tokens, r0.web_searches);
     byUser.set(r0.id, e);
   }
-  const recent = db.prepare(`SELECT a.created_at, a.kind, a.model, a.input_tokens, a.output_tokens, a.question, u.email
+  const recent = db.prepare(`SELECT a.created_at, a.kind, a.model, a.input_tokens, a.output_tokens, a.web_searches, a.question, u.email
     FROM ai_usage a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.id DESC LIMIT 50`).all();
   res.json({ users: [...byUser.values()], recent });
 });
@@ -174,6 +186,34 @@ r.post('/questions/import', (req, res) => {
   if (!Array.isArray(items)) return res.status(400).json({ error: 'invalid_format' });
   const result = importQuestions(items, { source: 'import', uid: req.user.id, active: req.body.active !== false });
   res.json({ added: result.added, errors: result.errors.slice(0, 50) });
+});
+
+// ---------- AI agent (web search) ----------
+r.get('/agent', (_req, res) => res.json({ ...agentStatus(), configured: !!apiKey() }));
+
+const startTask = (res, promise) => {
+  promise.catch((e) => console.error('[agent]', e.message));
+  res.json({ started: true });
+};
+r.post('/agent/jobs', (req, res) => {
+  if (!apiKey()) return res.status(503).json({ error: 'ai_not_configured' });
+  startTask(res, runJobSearch(req.user.id));
+});
+r.post('/agent/insights', (req, res) => {
+  if (!apiKey()) return res.status(503).json({ error: 'ai_not_configured' });
+  startTask(res, refreshOldestInsights(req.user.id));
+});
+r.post('/agent/questions', (req, res) => {
+  if (!apiKey()) return res.status(503).json({ error: 'ai_not_configured' });
+  const count = Math.max(1, Math.min(20, Number(req.body.count) || 10));
+  if (!db.prepare('SELECT 1 FROM subjects WHERE code = ?').get(String(req.body.subject))) return res.status(400).json({ error: 'invalid_subject' });
+  startTask(res, generateWebQuestions({ subject: String(req.body.subject), count, topic: String(req.body.topic || '').slice(0, 200) }, req.user.id));
+});
+
+// ---------- DuckDNS ----------
+r.post('/duckdns/update', async (_req, res) => {
+  const dd = duckdnsConfig();
+  res.json({ domain: dd.domain, hasToken: !!dd.token, ...(await updateDuckdns()) });
 });
 
 // ---------- job sources ----------
