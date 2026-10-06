@@ -1,0 +1,8 @@
+# Caddy obtains and renews the Let's Encrypt certificate automatically.
+{$DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 300MB
+	}
+	reverse_proxy aeroprep:3000
+}

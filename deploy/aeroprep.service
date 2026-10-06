@@ -1,0 +1,18 @@
+# Installation sans Docker : sudo cp deploy/aeroprep.service /etc/systemd/system/ && sudo systemctl enable --now aeroprep
+[Unit]
+Description=AeroPrep
+After=network-online.target
+
+[Service]
+Type=simple
+User=aeroprep
+WorkingDirectory=/opt/aeroprep
+EnvironmentFile=/opt/aeroprep/.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/aeroprep/data
+
+[Install]
+WantedBy=multi-user.target

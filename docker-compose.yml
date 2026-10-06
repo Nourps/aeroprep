@@ -1,0 +1,33 @@
+# docker compose up -d   →  AeroPrep on port 3000, HTTPS through Caddy on 80/443.
+services:
+  aeroprep:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+      TRUST_PROXY: "1"
+      SECURE_COOKIES: "true"
+    volumes:
+      - ./data:/data
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - aeroprep
+
+volumes:
+  caddy_data:
+  caddy_config:
