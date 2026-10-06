@@ -1,0 +1,3 @@
+﻿matiere;theme;question;A;B;C;D;bonne_reponse;explication;difficulte;reference
+050;Fronts;"Au passage d'un front froid dans l'hémisphère nord, le vent :";Recule (back);Vire à droite (veer);Ne change pas;Tombe à zéro;B;"Le vent vire (veer), la température baisse et la pression remonte après le front.";2;Météo — fronts
+A29;PTU;"When does the PTU operate automatically?";When the blue system is lost;When the green/yellow differential pressure exceeds 500 psi;Only on ground;When the RAT is deployed;B;"The PTU transfers power between green and yellow when ΔP > 500 psi.";2;FCOM DSC-29

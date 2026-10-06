@@ -1,6 +1,7 @@
 import { t, subjectName } from '../i18n.js';
 import { h, clear, api, pct, progressBar, fmtDate, toast, errorText } from '../ui.js';
-import { navigate } from '../app.js';
+import { navigate, can } from '../app.js';
+import { openQuestionEditor, allSubjects } from './questionForm.js';
 
 const home = (space) => (space === 'atpl' ? '#/atpl' : '#/a320');
 
@@ -71,7 +72,14 @@ export async function quizHub(view, space, sub, head) {
       help,
       h('div', { class: 'row gap' },
         h('button', { class: 'link-btn', onclick: () => setAll(true) }, t('selectAll')),
-        h('button', { class: 'link-btn', onclick: () => setAll(false) }, t('selectNone')))),
+        h('button', { class: 'link-btn', onclick: () => setAll(false) }, t('selectNone')),
+        h('span', { class: 'grow' }),
+        can('questions.propose') ? h('button', {
+          class: 'btn small',
+          onclick: async () => openQuestionEditor({
+            subjects: await allSubjects(), space, defaultSubject: [...selected][0] || subjects[0].code,
+          }),
+        }, `+ ${t('addQuestion')}`) : null)),
     h('div', { class: 'grid subjects' }, cards.map((c) => c.card)));
 }
 

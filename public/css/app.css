@@ -356,3 +356,11 @@ details[open] > summary { margin-bottom: .75rem; }
 .toast { background: var(--text); color: var(--bg); padding: .65rem 1rem; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,.2); max-width: 360px; }
 .toast.error { background: #b91c1c; color: #fff; }
 .toast.success { background: #15803d; color: #fff; }
+
+/* ---------- question editor ---------- */
+.tight-stack { gap: .45rem; margin: .3rem 0; }
+.opt-row { display: flex; align-items: center; gap: .5rem; }
+.correct-pick { flex-direction: row; align-items: center; gap: .35rem; cursor: pointer; }
+.correct-pick .letter { width: 1.6rem; height: 1.6rem; border-radius: 6px; display: grid; place-items: center; background: var(--surface-2); font-weight: 700; color: var(--text); }
+.correct-pick:has(input:checked) .letter { background: var(--good); color: var(--surface); }
+.howto { margin: 0; padding-left: 1.3rem; display: flex; flex-direction: column; gap: .35rem; color: var(--text-2); }

@@ -9,6 +9,7 @@ import docsRoutes from './routes/docs.js';
 import aiRoutes from './routes/ai.js';
 import jobsRoutes from './routes/jobs.js';
 import adminRoutes from './routes/admin.js';
+import questionRoutes from './routes/questions.js';
 import { resumePendingIndexing } from './services/pdf.js';
 import { startScheduler } from './services/jobs.js';
 
@@ -36,6 +37,7 @@ api.use('/docs', docsRoutes);
 api.use('/ai', aiRoutes);
 api.use('/jobs', jobsRoutes);
 api.use('/admin', adminRoutes);
+api.use('/questions', questionRoutes);
 api.use((_req, res) => res.status(404).json({ error: 'not_found' }));
 // eslint-disable-next-line no-unused-vars
 api.use((err, _req, res, _next) => {

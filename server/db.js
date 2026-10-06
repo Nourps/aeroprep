@@ -1,11 +1,56 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { config, ROOT } from './config.js';
 
-export const db = new Database(config.dbFile);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+/**
+ * Thin wrapper around Node's built-in SQLite (no native module to compile, so installs work on any OS).
+ * - prepare(): named-parameter objects may carry extra keys (they are ignored, like better-sqlite3 does)
+ * - transaction(fn): returns a function running fn inside BEGIN/COMMIT
+ */
+function openDatabase(file) {
+  const raw = new DatabaseSync(file);
+  let depth = 0;
+  return {
+    exec: (sql) => raw.exec(sql),
+    prepare(sql) {
+      const stmt = raw.prepare(sql);
+      const names = new Set([...sql.matchAll(/[@:$]([A-Za-z_][A-Za-z0-9_]*)/g)].map((m) => m[1]));
+      const fix = (args) => args.map((a) => {
+        if (!a || typeof a !== 'object' || Array.isArray(a) || ArrayBuffer.isView(a)) return a;
+        const out = {};
+        for (const [k, v] of Object.entries(a)) if (names.has(k)) out[k] = typeof v === 'boolean' ? Number(v) : v;
+        return out;
+      });
+      return {
+        run: (...args) => stmt.run(...fix(args)),
+        get: (...args) => stmt.get(...fix(args)),
+        all: (...args) => stmt.all(...fix(args)),
+      };
+    },
+    transaction(fn) {
+      return (...args) => {
+        if (depth > 0) return fn(...args); // nested: join the outer transaction
+        depth++;
+        raw.exec('BEGIN');
+        try {
+          const result = fn(...args);
+          raw.exec('COMMIT');
+          return result;
+        } catch (err) {
+          raw.exec('ROLLBACK');
+          throw err;
+        } finally {
+          depth--;
+        }
+      };
+    },
+  };
+}
+
+export const db = openDatabase(config.dbFile);
+db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (

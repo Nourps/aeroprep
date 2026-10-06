@@ -4,6 +4,7 @@ import { db, getSetting, setSetting } from '../db.js';
 import { requirePerm, hashPassword, dailyQuota } from '../auth.js';
 import { aiStatus } from '../services/ai.js';
 import { refreshAll, runSource } from '../services/jobs.js';
+import { validQuestion, questionValues, insertQuestion, importQuestions, parseQuestionsCsv } from '../questions.js';
 
 const r = Router();
 r.use(requirePerm('admin'));
@@ -128,33 +129,10 @@ r.get('/questions', (req, res) => {
   res.json({ questions: rows.map((q) => ({ ...q, options: JSON.parse(q.options) })) });
 });
 
-function validQuestion(b) {
-  const subject = db.prepare('SELECT space FROM subjects WHERE code = ?').get(b.subject_code);
-  if (!subject) return 'invalid_subject';
-  if (!b.question || String(b.question).trim().length < 5) return 'invalid_question';
-  if (!Array.isArray(b.options) || b.options.length < 2 || b.options.length > 6 || b.options.some((o) => !String(o).trim())) return 'invalid_options';
-  if (!Number.isInteger(b.correct) || b.correct < 0 || b.correct >= b.options.length) return 'invalid_correct';
-  return null;
-}
-
-function questionValues(b) {
-  const subject = db.prepare('SELECT space FROM subjects WHERE code = ?').get(b.subject_code);
-  return {
-    space: subject.space, subject_code: b.subject_code, topic: String(b.topic || '').slice(0, 200),
-    question: String(b.question).trim(), options: JSON.stringify(b.options.map((o) => String(o).trim())), correct: b.correct,
-    explanation: String(b.explanation || ''), difficulty: [1, 2, 3].includes(b.difficulty) ? b.difficulty : 2,
-    reference: String(b.reference || '').slice(0, 300), active: b.active === false || b.active === 0 ? 0 : 1,
-  };
-}
-
 r.post('/questions', (req, res) => {
   const err = validQuestion(req.body);
   if (err) return res.status(400).json({ error: err });
-  const v = questionValues(req.body);
-  const info = db.prepare(`INSERT INTO questions (space, subject_code, topic, question, options, correct, explanation, difficulty, reference, active, source, created_by)
-    VALUES (@space, @subject_code, @topic, @question, @options, @correct, @explanation, @difficulty, @reference, @active, 'admin', @uid)`)
-    .run({ ...v, uid: req.user.id });
-  res.json({ id: info.lastInsertRowid });
+  res.json({ id: insertQuestion(req.body, { source: 'admin', uid: req.user.id }) });
 });
 
 r.put('/questions/:id', (req, res) => {
@@ -185,24 +163,17 @@ r.get('/questions/export', (req, res) => {
   res.json(rows.map((q) => ({ ...q, options: JSON.parse(q.options) })));
 });
 
-// Import: JSON array of {subject, topic, question, options[], correct, explanation, difficulty, reference}
+// Import: JSON array of {subject, topic, question, options[], correct, ...} or { csv: "<text>" } (Excel CSV export)
 r.post('/questions/import', (req, res) => {
-  const items = Array.isArray(req.body) ? req.body : req.body.questions;
+  let items = Array.isArray(req.body) ? req.body : req.body.questions;
+  if (typeof req.body.csv === 'string') {
+    const parsed = parseQuestionsCsv(req.body.csv);
+    if (parsed.error) return res.status(400).json({ error: parsed.error });
+    items = parsed.items;
+  }
   if (!Array.isArray(items)) return res.status(400).json({ error: 'invalid_format' });
-  const errors = [];
-  let added = 0;
-  const insert = db.prepare(`INSERT INTO questions (space, subject_code, topic, question, options, correct, explanation, difficulty, reference, active, source, created_by)
-    VALUES (@space, @subject_code, @topic, @question, @options, @correct, @explanation, @difficulty, @reference, @active, 'import', @uid)`);
-  db.transaction(() => {
-    items.forEach((raw, i) => {
-      const b = { ...raw, subject_code: raw.subject_code || raw.subject };
-      const err = validQuestion(b);
-      if (err) { errors.push({ index: i, error: err }); return; }
-      insert.run({ ...questionValues(b), uid: req.user.id });
-      added++;
-    });
-  })();
-  res.json({ added, errors: errors.slice(0, 50) });
+  const result = importQuestions(items, { source: 'import', uid: req.user.id, active: req.body.active !== false });
+  res.json({ added: result.added, errors: result.errors.slice(0, 50) });
 });
 
 // ---------- job sources ----------

@@ -1,0 +1,34 @@
+AEROPREP - INSTALLATION SUR WINDOWS
+===================================
+
+1. Dezippe le dossier (clic droit > "Extraire tout..."), par exemple dans Documents.
+2. Double-clique sur INSTALLER-AEROPREP.bat
+   - Si Windows affiche "Windows a protege votre ordinateur" : clique sur
+     "Informations complementaires" puis "Executer quand meme".
+   - Node.js est installe automatiquement s'il manque (accepte la demande d'autorisation).
+   - Si le script demande de le relancer apres l'installation de Node.js, relance-le.
+3. A la fin, AeroPrep s'ouvre dans ton navigateur : cree ton compte,
+   le premier compte est automatiquement administrateur.
+
+ENSUITE
+- Pour lancer AeroPrep : double-clique sur le raccourci "AeroPrep" du bureau
+  (ou sur LANCER-AEROPREP.bat). Laisse la fenetre noire ouverte pendant l'utilisation.
+- Adresse : http://localhost:3000
+- Si Windows demande d'autoriser Node.js dans le pare-feu, accepte pour le "reseau prive" :
+  les autres appareils de ta maison pourront ouvrir http://<adresse-IP-du-PC>:3000
+
+AJOUTER DES QUESTIONS
+- Une par une : bouton "+ Ajouter une question" sur la page ATPL ou A320 > Systemes
+  (ou Admin > Banque de questions). Bouton "Enregistrer et en ajouter une autre" pour enchainer.
+- En masse avec Excel : Admin > Banque de questions > "Modele Excel/CSV",
+  remplis une ligne par question, enregistre en CSV, puis "Importer (Excel/CSV)".
+- Les membres valides peuvent proposer des questions : elles attendent ta validation
+  (filtre "A relire (inactives)" dans Admin > Banque de questions).
+
+CLE API (assistant IA sur les documents A320)
+- Admin > Reglages > Cle API Anthropic.
+
+SAUVEGARDE
+- Tout est dans le dossier "data" (base + PDF) : copie-le regulierement.
+
+Ouvrir AeroPrep a tes amis depuis Internet (DuckDNS, HTTPS) : voir README.md.

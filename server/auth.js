@@ -83,6 +83,7 @@ const PERMS = {
   'docs.view': ['admin', 'member', 'readonly'],
   'ai.ask': ['admin', 'member', 'readonly', 'pending'], // still limited by quota (0 for pending by default)
   'jobs.add': ['admin', 'member'],
+  'questions.propose': ['admin', 'member'], // members' questions wait for admin review
   'admin': ['admin'],
 };
 

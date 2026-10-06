@@ -1,6 +1,13 @@
 import { t, subjectName } from '../i18n.js';
 import { h, clear, api, toast, errorText, modal, fmtDate } from '../ui.js';
 import { state, navigate } from '../app.js';
+import { openQuestionEditor } from './questionForm.js';
+
+/** Reads a text file; falls back to Windows-1252 (Excel's default "CSV" on French Windows). */
+async function readText(file) {
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch { return new TextDecoder('windows-1252').decode(buf); }
+}
 
 const ROLES = ['admin', 'member', 'readonly', 'pending'];
 const TABS = ['users', 'settings', 'usage', 'questions', 'sources'];
@@ -118,7 +125,7 @@ async function questions(el) {
       h('ol', { class: 'opts', type: 'A' }, q.options.map((o, i) => h('li', { class: i === q.correct ? 'right' : '' }, o))),
       q.flag_notes ? h('p', { class: 'notice subtle small' }, q.flag_notes) : null,
       h('div', { class: 'row gap' },
-        h('button', { class: 'link-btn', onclick: () => editQuestion(q, allSubjects, reload) }, t('edit')),
+        h('button', { class: 'link-btn', onclick: () => openQuestionEditor({ question: q, subjects: allSubjects, onSaved: reload }) }, t('edit')),
         h('button', { class: 'link-btn', onclick: async () => { await api(`/admin/questions/${q.id}`, { method: 'PATCH', body: { active: !q.active } }); reload(); } }, q.active ? t('disable') : t('enable')),
         q.flags ? h('button', { class: 'link-btn', onclick: async () => { await api(`/admin/questions/${q.id}`, { method: 'PATCH', body: { clearFlags: true } }); reload(); } }, '⚐ ✕') : null,
         h('button', { class: 'link-btn danger', onclick: async () => { if (confirm(t('confirmDelete'))) { await api(`/admin/questions/${q.id}`, { method: 'DELETE' }); reload(); } } }, t('delete'))))));
@@ -131,23 +138,32 @@ async function questions(el) {
   const state_ = h('select', { onchange: (e) => { const v = e.target.value; qFilters.active = v === 'inactive' ? '0' : ''; qFilters.flagged = v === 'flagged' ? '1' : ''; reload(); } },
     h('option', { value: '' }, t('all')), h('option', { value: 'inactive', selected: qFilters.active === '0' }, t('onlyInactive')), h('option', { value: 'flagged', selected: qFilters.flagged === '1' }, t('onlyFlagged')));
   const search = h('input', { type: 'search', value: qFilters.q, placeholder: t('search'), onchange: (e) => { qFilters.q = e.target.value; reload(); } });
-  const importInput = h('input', { type: 'file', accept: '.json,application/json', style: { display: 'none' },
+  const importInput = h('input', { type: 'file', accept: '.csv,.txt,.json,text/csv,application/json', style: { display: 'none' },
     onchange: async (e) => {
       const file = e.target.files[0];
+      e.target.value = '';
       if (!file) return;
       try {
-        const res = await api('/admin/questions/import', { method: 'POST', body: JSON.parse(await file.text()) });
-        toast(`+${res.added} ${t('questions')}${res.errors.length ? ` · ${res.errors.length} ${t('error')}` : ''}`, res.errors.length ? 'info' : 'success');
+        const text = await readText(file);
+        const body = /\.json$/i.test(file.name) ? JSON.parse(text) : { csv: text };
+        const res = await api('/admin/questions/import', { method: 'POST', body });
+        if (res.errors.length) {
+          modal(t('importResult'), h('div', {}, h('p', {}, `+${res.added} ${t('questions')}`),
+            h('p', { class: 'form-error' }, `${res.errors.length} ${t('linesRejected')} :`),
+            h('ul', {}, res.errors.map((er) => h('li', {}, `${t('line')} ${er.line} — ${t(`qerr_${er.error}`)}`)))));
+        } else toast(`+${res.added} ${t('questions')}`, 'success');
         reload();
       } catch (err) { toast(errorText(err), 'error'); }
     } });
-
   clear(el,
     h('div', { class: 'card filters' }, h('div', { class: 'filter-row' },
       h('label', { class: 'inline' }, t('space'), space), h('label', { class: 'inline' }, subject), h('label', { class: 'inline' }, state_), search,
-      h('button', { class: 'btn primary', onclick: () => editQuestion(null, allSubjects, reload) }, `+ ${t('newQuestion')}`),
-      h('button', { class: 'btn', onclick: () => importInput.click() }, t('importJson')), importInput,
+      h('button', { class: 'btn primary', onclick: () => openQuestionEditor({ subjects: allSubjects, defaultSubject: qFilters.subject || (qFilters.space === 'a320' ? 'A29' : '010'), space: qFilters.space || undefined, onSaved: reload }) }, `+ ${t('newQuestion')}`),
+      h('button', { class: 'btn', onclick: () => importInput.click() }, t('importCsv')), importInput,
+      h('a', { class: 'btn', href: '/modele-questions.csv', download: 'modele-questions.csv' }, t('csvTemplate')),
       h('a', { class: 'btn', href: `/api/admin/questions/export${qFilters.space ? `?space=${qFilters.space}` : ''}` }, t('exportJson')))),
+    h('details', { class: 'card' }, h('summary', {}, `📄 ${t('csvHowTo')}`),
+      h('ol', { class: 'howto' }, [1, 2, 3, 4].map((i) => h('li', {}, t(`csvStep${i}`))))),
     await generatorCard(reload),
     list);
   reload();
@@ -178,48 +194,6 @@ async function generatorCard(reload) {
         } catch (err) { toast(errorText(err), 'error'); } finally { btn.disabled = false; btn.textContent = t('generate'); }
       },
     }, doc, subject, h('label', { class: 'inline' }, t('fromPage'), from), h('label', { class: 'inline' }, t('toPage'), to), h('label', { class: 'inline' }, t('count'), count), btn));
-}
-
-function editQuestion(q, subjects, reload) {
-  const v = q || { subject_code: qFilters.subject || (qFilters.space === 'a320' ? 'A29' : '010'), options: ['', '', '', ''], correct: 0, difficulty: 2, active: 1 };
-  const subject = h('select', {}, subjects.map((s) => h('option', { value: s.code, selected: s.code === v.subject_code }, `${s.space.toUpperCase()} · ${s.code} · ${subjectName(s)}`)));
-  const topic = h('input', { value: v.topic || '' });
-  const question = h('textarea', { rows: 3, required: true }, v.question || '');
-  const name = `correct-${Math.random()}`;
-  const optRows = h('div', { class: 'stack' });
-  const addOpt = (text = '', checked = false) => optRows.append(h('div', { class: 'row gap opt-row' },
-    h('input', { type: 'radio', name, checked }), h('input', { type: 'text', value: text, class: 'grow' }),
-    h('button', { type: 'button', class: 'link-btn danger', onclick: (e) => e.target.closest('.opt-row').remove() }, '✕')));
-  v.options.forEach((o, i) => addOpt(o, i === v.correct));
-  const explanation = h('textarea', { rows: 4 }, v.explanation || '');
-  const reference = h('input', { value: v.reference || '' });
-  const difficulty = h('select', {}, [1, 2, 3].map((d) => h('option', { value: d, selected: d === v.difficulty }, t(`diff${d}`))));
-  const active = h('input', { type: 'checkbox', checked: !!v.active });
-  const close = modal(q ? t('edit') : t('newQuestion'), h('form', {
-    class: 'stack',
-    onsubmit: async (e) => {
-      e.preventDefault();
-      const rows = [...optRows.querySelectorAll('.opt-row')];
-      const body = {
-        subject_code: subject.value, topic: topic.value, question: question.value,
-        options: rows.map((r) => r.querySelector('input[type=text]').value),
-        correct: rows.findIndex((r) => r.querySelector('input[type=radio]').checked),
-        explanation: explanation.value, reference: reference.value, difficulty: Number(difficulty.value), active: active.checked,
-      };
-      try {
-        await api(q ? `/admin/questions/${q.id}` : '/admin/questions', { method: q ? 'PUT' : 'POST', body });
-        close(); reload();
-      } catch (err) { toast(errorText(err), 'error'); }
-    },
-  },
-  h('div', { class: 'grid two tight' }, h('label', {}, t('subjects'), subject), h('label', {}, t('topic'), topic)),
-  h('label', {}, t('question'), question),
-  h('div', {}, h('span', { class: 'filter-label' }, t('options')), optRows,
-    h('button', { type: 'button', class: 'link-btn', onclick: () => addOpt() }, '+')),
-  h('label', {}, t('explanation'), explanation),
-  h('div', { class: 'grid three tight' }, h('label', {}, t('reference'), reference), h('label', {}, t('difficulty'), difficulty),
-    h('label', { class: 'inline' }, active, t('active'))),
-  h('button', { class: 'btn primary' }, t('save'))), { wide: true });
 }
 
 // ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ function client() {
 
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'aeroprep-test-'));
-  server = spawn(process.execPath, ['server/index.js'], {
+  server = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server/index.js"], {
     env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_DIR: dataDir, ANTHROPIC_API_KEY: '' },
     stdio: 'ignore',
   });
@@ -149,4 +149,35 @@ test('admin question import and quotas', async () => {
   const s = (await u('/admin/settings')).body.settings;
   assert.equal(s.quota_member, '3');
   assert.equal(s.ai_effort, 'medium');
+});
+
+test('questions: CSV import from Excel and member proposals', async () => {
+  const admin = client();
+  await admin('/auth/login', { method: 'POST', body: { email: 'admin@test.fr', password: 'correct-horse-1' } });
+  const csv = '﻿matiere;theme;question;A;B;C;D;bonne_reponse;explication\r\n'
+    + '50;Fog;"Radiation fog forms; mostly at night?";Yes;No;;;A;"Clear sky, light wind"\r\n'
+    + 'a29;PTU;What drives the PTU?;Elec;Hyd ΔP;Bleed;RAT;b;x\r\n'
+    + 'ZZ;x;Bad subject here;a;b;c;d;A;x\r\n'
+    + '010;x;Missing answer key;a;b;c;d;;x\r\n';
+  const res = await admin('/admin/questions/import', { method: 'POST', body: { csv } });
+  assert.equal(res.body.added, 2, JSON.stringify(res.body));
+  assert.deepEqual(res.body.errors.map((e) => [e.line, e.error]), [[4, 'invalid_subject'], [5, 'invalid_correct']]);
+  const qs = (await admin('/admin/questions?space=atpl&subject=050&q=Radiation%20fog%20forms')).body.questions;
+  assert.equal(qs.length, 1);
+  assert.deepEqual(qs[0].options, ['Yes', 'No']);
+  assert.equal(qs[0].question, 'Radiation fog forms; mostly at night?');
+
+  const bad = await admin('/admin/questions/import', { method: 'POST', body: { csv: 'foo;bar\n1;2\n' } });
+  assert.equal(bad.body.error, 'missing_columns');
+
+  // A member proposes: stored inactive; a pending user cannot propose.
+  const member = client();
+  await member('/auth/login', { method: 'POST', body: { email: 'friend@test.fr', password: 'correct-horse-2' } });
+  const p = await member('/questions', { method: 'POST', body: { subject_code: 'A27', question: 'Proposed by a member?', options: ['a', 'b'], correct: 1, active: true } });
+  assert.equal(p.body.published, false);
+  const inactive = (await admin('/admin/questions?active=0&q=Proposed%20by')).body.questions;
+  assert.equal(inactive[0].source, 'member');
+  const pending = client();
+  await pending('/auth/register', { method: 'POST', body: { email: 'new@test.fr', password: 'correct-horse-3' } });
+  assert.equal((await pending('/questions', { method: 'POST', body: {} })).status, 403);
 });

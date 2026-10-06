@@ -42,7 +42,15 @@ La banque de départ contient **≈ 210 questions originales** (≈ 150 ATPL, �
 
 ## Installation
 
-Prérequis : **Node.js 20+** (ou Docker), une machine qui reste allumée, un nom DuckDNS pointant vers ta box, et les ports 80/443 redirigés vers la machine.
+### Windows : installation en un double-clic
+1. Dézippe le dossier (par exemple dans *Documents*).
+2. Double-clique sur **`INSTALLER-AEROPREP.bat`**. Le script installe Node.js s'il manque (via winget), télécharge les composants, crée la configuration et un raccourci **AeroPrep** sur le bureau, puis ouvre le site.
+3. Ensuite, pour lancer AeroPrep : raccourci du bureau ou **`LANCER-AEROPREP.bat`** (garder la fenêtre ouverte). Adresse : http://localhost:3000.
+
+Le détail (message SmartScreen, pare-feu, réseau local) est dans `COMMENT-INSTALLER.txt`.
+
+### Serveur (Linux / Docker) avec accès depuis Internet
+Prérequis : **Node.js 22.13+** (ou Docker), une machine qui reste allumée, un nom DuckDNS pointant vers ta box, et les ports 80/443 redirigés vers la machine.
 
 ### Option A — Docker + HTTPS automatique (recommandé)
 ```bash
@@ -76,7 +84,20 @@ Modèle par défaut : `claude-opus-5-5`, effort de raisonnement `medium` — tou
 ### Sauvegarde
 Tout est dans le dossier `data/` : `aeroprep.db` (comptes, questions, progression, offres) et `documents/` (PDF). Sauvegarder ce dossier suffit (de préférence application arrêtée, ou avec `sqlite3 data/aeroprep.db ".backup save.db"`).
 
-## Format d'import des questions
+## Ajouter des questions
+
+- **Une par une, depuis le site** : bouton **« + Ajouter une question »** sur la page ATPL ou *A320 › Systèmes* (ou *Admin › Banque de questions*). Matière, question, réponses A à D (on coche la bonne), explication. Le bouton **« Enregistrer et en ajouter une autre »** garde la matière et le thème pour enchaîner une série.
+- **En masse avec Excel** : *Admin › Banque de questions › Modèle Excel/CSV*. Une ligne par question, colonnes :
+
+  | matiere | theme | question | A | B | C | D | bonne_reponse | explication | difficulte | reference |
+  |---|---|---|---|---|---|---|---|---|---|---|
+  | 050 | Fronts | Au passage d'un front froid… | Recule | Vire | … | … | B | Le vent vire… | 2 | Météo |
+
+  Enregistre en « CSV UTF-8 » ou « CSV (séparateur : point-virgule) » puis **« Importer (Excel/CSV) »**. Les lignes refusées sont listées avec leur numéro et la raison. `bonne_reponse` = A, B, C, D (ou 1 à 4) ; `difficulte` = 1, 2 ou 3 ; les colonnes E et F sont possibles pour plus de 4 réponses ; `050` écrit `50` par Excel est accepté.
+- **Propositions des membres** : les membres validés ont aussi le bouton « + Ajouter une question » ; leurs questions arrivent désactivées et attendent ta validation (filtre « À relire (inactives) »).
+- **Depuis un PDF avec l'IA** : *Admin › Banque de questions › Générer des questions depuis un document*.
+
+### Format JSON (import/export)
 ```json
 [
   {
@@ -91,7 +112,7 @@ Tout est dans le dossier `data/` : `aeroprep.db` (comptes, questions, progressio
   }
 ]
 ```
-`subject` : code de matière (`010` … `090` pour l'ATPL, `A20` … `A99` pour l'A320, voir `server/db.js`). `correct` est l'index (0 = première réponse). Les réponses sont mélangées à l'affichage. Tes flashcards d'entretien OPL peuvent être importées dans ce format.
+`subject` : code de matière (`010` … `090` pour l'ATPL, `A20` … `A99` pour l'A320, voir `server/db.js`). `correct` est l'index (0 = première réponse). Les réponses sont mélangées à l'affichage. Tes flashcards d'entretien OPL peuvent être importées dans ce format ou via le modèle Excel.
 
 ## Développement
 ```bash
@@ -100,7 +121,7 @@ npm run dev      # redémarre à chaque modification
 npm test         # tests API + classement des offres
 npm run check    # vérifie les fichiers seed/*.json
 ```
-Structure : `server/` (Express 5, SQLite via better-sqlite3, FTS5 pour la recherche, pdf.js pour l'extraction de texte, SDK Anthropic), `public/` (interface en JavaScript natif, sans build), `seed/` (banques de questions).
+Structure : `server/` (Express 5, SQLite intégré à Node.js (`node:sqlite`, aucun module à compiler), FTS5 pour la recherche, pdf.js pour l'extraction de texte, SDK Anthropic), `public/` (interface en JavaScript natif, sans build), `seed/` (banques de questions).
 
 ## Points d'attention
 - **Documents** : FCOM/QRH appartiennent à Airbus ou à la compagnie et sont souvent confidentiels. La bibliothèque n'est accessible qu'aux comptes validés ; ne valide que des personnes de confiance. La documentation approuvée et à jour de la compagnie fait toujours foi.
